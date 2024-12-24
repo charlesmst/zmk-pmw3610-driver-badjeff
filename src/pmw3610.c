@@ -480,8 +480,10 @@ static int pmw3610_report_data(const struct device *dev) {
     rounding_carry_x = new_x - (int)new_x;
     rounding_carry_y = new_y - (int)new_y;
     // Clamp values and report back accelerated values.
+    LOG_DBG("MACEL RESULT %d %d -> %d %d, delta %i, cpi %i",dx,dy,new_x,new_y, delta_time, device_cpi);
     dx = new_x;
     dy = new_y;
+
 #endif
     // fetch report value
     int16_t rx = (int16_t)CLAMP(dx, INT16_MIN, INT16_MAX);
