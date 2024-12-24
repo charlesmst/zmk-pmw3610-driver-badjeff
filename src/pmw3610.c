@@ -23,6 +23,7 @@ LOG_MODULE_REGISTER(pmw3610, CONFIG_PMW3610_LOG_LEVEL);
 
 #ifdef CONFIG_PMW3610_MACCEL
 
+static int64_t maccel_timer ;
 static maccel_config_t g_maccel_config = {
     // clang-format off
     .growth_rate =  CONFIG_PMW3610_MACCEL_GROWTH_RATE / 100.0f,
@@ -442,7 +443,6 @@ static int pmw3610_report_data(const struct device *dev) {
     static float rounding_carry_x = 0;
     static float rounding_carry_y = 0;
 
-    static int64_t maccel_timer = 0;
     const int64_t delta_time = k_uptime_delta(&maccel_timer);
     if (delta_time > CONFIG_PMW3610_MACCEL_ROUNDING_CARRY_TIMEOUT_MS) {
         rounding_carry_x = 0;
@@ -471,10 +471,12 @@ static int pmw3610_report_data(const struct device *dev) {
     const float new_x = rounding_carry_x + maccel_factor * x;
     const float new_y = rounding_carry_y + maccel_factor * y;
     // Accumulate any difference from next integer (quantization).
-    rounding_carry_x = new_x - (int64_t)new_x;
-    rounding_carry_y = new_y - (int64_t)new_y;
+    rounding_carry_x = new_x - (int)new_x;
+    rounding_carry_y = new_y - (int)new_y;
+
+    int64_t fffff = ((int) maccel_factor * 1000);
     // Clamp values and report back accelerated values.
-    LOG_DBG("MACEL RESULT %d | %d -> %d | %d, delta %d, cpi %u, f %f",x,y,(int64_t)new_x,(int64_t)new_y, delta_time, device_cpi,  maccel_factor);
+    LOG_DBG("MACEL RESULT %d | %d -> %d | %d, delta %d, cpi %u, f %d",x,y,(int)new_x,(int)new_y, delta_time, device_cpi,  fffff);
     x = new_x;
     y = new_y;
 
