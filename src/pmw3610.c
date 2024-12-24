@@ -22,6 +22,7 @@ LOG_MODULE_REGISTER(pmw3610, CONFIG_PMW3610_LOG_LEVEL);
 #define CONSTRAIN_REPORT(val) (int16_t) _CONSTRAIN(val, XY_REPORT_MIN, XY_REPORT_MAX)
 
 #ifdef CONFIG_PMW3610_MACCEL
+
 static maccel_config_t g_maccel_config = {
     // clang-format off
     .growth_rate =  CONFIG_PMW3610_MACCEL_GROWTH_RATE / 100.0f,
@@ -436,30 +437,23 @@ static int pmw3610_report_data(const struct device *dev) {
     last_smp_time = now;
 #endif
 
-    // accumulate delta until report in next iteration
-    dx += x;
-    dy += y;
-
-#if CONFIG_PMW3610_REPORT_INTERVAL_MIN > 0
-    // strict to report inerval
-    if (now - last_rpt_time < CONFIG_PMW3610_REPORT_INTERVAL_MIN) {
-        return 0;
-    }
-#endif
 
 #ifdef CONFIG_PMW3610_MACCEL
     static float rounding_carry_x = 0;
     static float rounding_carry_y = 0;
 
-    const int64_t delta_time = now - last_rpt_time;
+    static int64_t maccel_timer = 0;
+    const int64_t delta_time = k_uptime_delta(&maccel_timer);
     if (delta_time > CONFIG_PMW3610_MACCEL_ROUNDING_CARRY_TIMEOUT_MS) {
         rounding_carry_x = 0;
         rounding_carry_y = 0;
     }
+
+    maccel_timer = k_uptime_get();
     uint32_t device_cpi = config->cpi;
     const float dpi_correction = (float)1000.0f / device_cpi;
     // calculate euclidean distance moved (sqrt(x^2 + y^2))
-    const float distance = sqrtf(dx * dx + dy * dy);
+    const float distance = sqrtf(x * x + y * y);
     // calculate delta velocity: dv = distance/dt
     const float velocity_raw = distance / delta_time;
     // correct raw velocity for dpi
@@ -474,17 +468,28 @@ static int pmw3610_report_data(const struct device *dev) {
     const float upper_limit = CONFIG_PMW3610_MACCEL_LIMIT_UPPER / 100.0f;
     const float maccel_factor = upper_limit - (upper_limit - m) / powf(1 + expf(k * (velocity - s)), g / k);
     // multiply mouse reports by acceleration factor, and account for previous quantization errors:
-    const float new_x = rounding_carry_x + maccel_factor * dx;
-    const float new_y = rounding_carry_y + maccel_factor * dy;
+    const float new_x = rounding_carry_x + maccel_factor * x;
+    const float new_y = rounding_carry_y + maccel_factor * y;
     // Accumulate any difference from next integer (quantization).
-    rounding_carry_x = new_x - (int)new_x;
-    rounding_carry_y = new_y - (int)new_y;
+    rounding_carry_x = new_x - (int64_t)new_x;
+    rounding_carry_y = new_y - (int64_t)new_y;
     // Clamp values and report back accelerated values.
-    LOG_DBG("MACEL RESULT %d %d -> %d %d, delta %i, cpi %i",dx,dy,new_x,new_y, delta_time, device_cpi);
-    dx = new_x;
-    dy = new_y;
+    LOG_DBG("MACEL RESULT %d | %d -> %d | %d, delta %d, cpi %d, x %d, y %d f %d",x,y,new_x,new_y, delta_time, device_cpi, x, y, maccel_factor);
+    x = new_x;
+    y = new_y;
 
 #endif
+    // accumulate delta until report in next iteration
+    dx += x;
+    dy += y;
+
+#if CONFIG_PMW3610_REPORT_INTERVAL_MIN > 0
+    // strict to report inerval
+    if (now - last_rpt_time < CONFIG_PMW3610_REPORT_INTERVAL_MIN) {
+        return 0;
+    }
+#endif
+
     // fetch report value
     int16_t rx = (int16_t)CLAMP(dx, INT16_MIN, INT16_MAX);
     int16_t ry = (int16_t)CLAMP(dy, INT16_MIN, INT16_MAX);
