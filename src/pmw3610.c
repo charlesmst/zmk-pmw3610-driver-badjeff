@@ -450,7 +450,7 @@ static int pmw3610_report_data(const struct device *dev) {
     }
 
     maccel_timer = k_uptime_get();
-    uint32_t device_cpi = config->cpi;
+    uint32_t device_cpi = 1600;//config->cpi;
     const float dpi_correction = (float)1000.0f / device_cpi;
     // calculate euclidean distance moved (sqrt(x^2 + y^2))
     const float distance = sqrtf(x * x + y * y);
@@ -474,7 +474,7 @@ static int pmw3610_report_data(const struct device *dev) {
     rounding_carry_x = new_x - (int64_t)new_x;
     rounding_carry_y = new_y - (int64_t)new_y;
     // Clamp values and report back accelerated values.
-    LOG_DBG("MACEL RESULT %d | %d -> %d | %d, delta %d, cpi %d, x %d, y %d f %d",x,y,new_x,new_y, delta_time, device_cpi, x, y, maccel_factor);
+    LOG_DBG("MACEL RESULT %d | %d -> %d | %d, delta %d, cpi %u, f %f",x,y,(int64_t)new_x,(int64_t)new_y, delta_time, device_cpi,  maccel_factor);
     x = new_x;
     y = new_y;
 
