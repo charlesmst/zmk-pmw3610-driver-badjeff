@@ -10,6 +10,16 @@ extern "C" {
 /* Timings (in us) used in SPI communication. */
 #define T_CLOCK_ON_DELAY_US 300
 
+
+#ifdef CONFIG_PMW3610_MACCEL
+typedef struct _maccel_config_t {
+    float growth_rate;
+    float offset;
+    float limit;
+    float takeoff;
+    bool  enabled;
+} maccel_config_t;
+#endif
 /* Sensor registers (addresses) */
 #define PMW3610_REG_PRODUCT_ID 0x00
 #define PMW3610_REG_REVISION_ID 0x01

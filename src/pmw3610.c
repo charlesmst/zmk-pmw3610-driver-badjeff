@@ -11,10 +11,27 @@
 #include <zephyr/input/input.h>
 #include <zmk/keymap.h>
 #include "pmw3610.h"
+#include "math.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(pmw3610, CONFIG_PMW3610_LOG_LEVEL);
 
+#define XY_REPORT_MIN INT8_MIN
+#define XY_REPORT_MAX INT8_MAX
+#define _CONSTRAIN(amt, low, high) ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
+#define CONSTRAIN_REPORT(val) (int16_t) _CONSTRAIN(val, XY_REPORT_MIN, XY_REPORT_MAX)
+
+#ifdef CONFIG_PMW3610_MACCEL
+static maccel_config_t g_maccel_config = {
+    // clang-format off
+    .growth_rate =  CONFIG_PMW3610_MACCEL_GROWTH_RATE / 100.0f,
+    .offset =       CONFIG_PMW3610_MACCEL_OFFSET / 100.0f,
+    .limit =        CONFIG_PMW3610_MACCEL_LIMIT / 100.0f,
+    .takeoff =      CONFIG_PMW3610_MACCEL_TAKEOFF / 100.0f,
+    .enabled =      true
+    // clang-format on
+};
+#endif
 //////// Sensor initialization steps definition //////////
 // init is done in non-blocking manner (i.e., async), a //
 // delayable work is defined for this purpose           //
@@ -384,6 +401,7 @@ static int pmw3610_report_data(const struct device *dev) {
     int16_t x = TOINT16((buf[PMW3610_X_L_POS] + ((buf[PMW3610_XY_H_POS] & 0xF0) << 4)), 12);
     int16_t y = TOINT16((buf[PMW3610_Y_L_POS] + ((buf[PMW3610_XY_H_POS] & 0x0F) << 8)), 12);
 
+
 #if IS_ENABLED(CONFIG_PMW3610_SWAP_XY)
     int16_t a = x;
     x = y;
@@ -429,6 +447,42 @@ static int pmw3610_report_data(const struct device *dev) {
     }
 #endif
 
+#ifdef CONFIG_PMW3610_MACCEL
+    static float rounding_carry_x = 0;
+    static float rounding_carry_y = 0;
+
+    const int64_t delta_time = now - last_rpt_time;
+    if (delta_time > CONFIG_PMW3610_MACCEL_ROUNDING_CARRY_TIMEOUT_MS) {
+        rounding_carry_x = 0;
+        rounding_carry_y = 0;
+    }
+    uint32_t device_cpi = config->cpi;
+    const float dpi_correction = (float)1000.0f / device_cpi;
+    // calculate euclidean distance moved (sqrt(x^2 + y^2))
+    const float distance = sqrtf(dx * dx + dy * dy);
+    // calculate delta velocity: dv = distance/dt
+    const float velocity_raw = distance / delta_time;
+    // correct raw velocity for dpi
+    const float velocity = dpi_correction * velocity_raw;
+    // letter variables for readability of maths:
+    const float k = g_maccel_config.takeoff;
+    const float g = g_maccel_config.growth_rate;
+    const float s = g_maccel_config.offset;
+    const float m = g_maccel_config.limit;
+    // acceleration factor: f(v) = 1 - (1 - M) / {1 + e^[K(v - S)]}^(G/K):
+    // Generalised Sigmoid Function, see https://www.desmos.com/calculator/k9vr0y2gev
+    const float upper_limit = CONFIG_PMW3610_MACCEL_LIMIT_UPPER / 100.0f;
+    const float maccel_factor = upper_limit - (upper_limit - m) / powf(1 + expf(k * (velocity - s)), g / k);
+    // multiply mouse reports by acceleration factor, and account for previous quantization errors:
+    const float new_x = rounding_carry_x + maccel_factor * dx;
+    const float new_y = rounding_carry_y + maccel_factor * dy;
+    // Accumulate any difference from next integer (quantization).
+    rounding_carry_x = new_x - (int)new_x;
+    rounding_carry_y = new_y - (int)new_y;
+    // Clamp values and report back accelerated values.
+    dx = new_x;
+    dy = new_y;
+#endif
     // fetch report value
     int16_t rx = (int16_t)CLAMP(dx, INT16_MIN, INT16_MAX);
     int16_t ry = (int16_t)CLAMP(dy, INT16_MIN, INT16_MAX);
