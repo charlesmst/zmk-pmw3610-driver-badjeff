@@ -474,9 +474,9 @@ static int pmw3610_report_data(const struct device *dev) {
     rounding_carry_x = new_x - (int)new_x;
     rounding_carry_y = new_y - (int)new_y;
 
-    int64_t fffff = ((int) maccel_factor * 1000);
+    // int64_t fffff = ((int) maccel_factor * 1000);
     // Clamp values and report back accelerated values.
-    LOG_DBG("MACEL RESULT %d | %d -> %d | %d, delta %d, cpi %u, f %d",x,y,(int)new_x,(int)new_y, delta_time, device_cpi,  fffff);
+    // LOG_DBG("MACEL RESULT %d | %d -> %d | %d, delta %d, cpi %u, f %d",x,y,(int)new_x,(int)new_y, delta_time, device_cpi,  fffff);
     x = new_x;
     y = new_y;
 
